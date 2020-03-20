@@ -1,0 +1,151 @@
+hex_grid:
+  function:
+    CREATE OR REPLACE FUNCTION hex_grid(areakm2 FLOAT, xmin FLOAT, ymin FLOAT, xmax FLOAT, ymax FLOAT, inputsrid INTEGER,
+      workingsrid INTEGER, ouputsrid INTEGER)
+      RETURNS SETOF geometry AS
+    $BODY$
+
+    DECLARE
+      minpnt GEOMETRY;
+      maxpnt GEOMETRY;
+      x1 INTEGER;
+      y1 INTEGER;
+      x2 INTEGER;
+      y2 INTEGER;
+      aream2 FLOAT;
+      qtrwidthfloat FLOAT;
+      qtrwidth INTEGER;
+      halfheight INTEGER;
+
+    BEGIN
+
+      minpnt = ST_Transform(ST_SetSRID(ST_MakePoint(xmin, ymin), inputsrid), workingsrid);
+      maxpnt = ST_Transform(ST_SetSRID(ST_MakePoint(xmax, ymax), inputsrid), workingsrid);
+
+      x1 = ST_X(minpnt)::INTEGER;
+      y1 = ST_Y(minpnt)::INTEGER;
+      x2 = ST_X(maxpnt)::INTEGER;
+      y2 = ST_Y(maxpnt)::INTEGER;
+
+      aream2 := areakm2 * 1000000.0;
+      qtrwidthfloat := sqrt(aream2/(sqrt(3.0) * (3.0/2.0))) / 2.0;
+
+      qtrwidth := FLOOR(qtrwidthfloat);
+      halfheight := CEILING(qtrwidthfloat * sqrt(3.0));
+
+      RETURN QUERY (
+        SELECT ST_Transform(ST_SetSRID(ST_Translate(geom, x_series::FLOAT, y_series::FLOAT), workingsrid), ouputsrid) AS geom
+          FROM generate_series(x1, x2, (qtrwidth * 6)) AS x_series,
+               generate_series(y1, y2, (halfheight * 2)) AS y_series,
+               (
+                 SELECT ST_GeomFromText(
+                   format('POLYGON((0 0, %s %s, %s %s, %s %s, %s %s, %s %s, 0 0))',
+                     qtrwidth, halfheight,
+                     qtrwidth * 3, halfheight,
+                     qtrwidth * 4, 0,
+                     qtrwidth * 3, halfheight * -1,
+                     qtrwidth, halfheight * -1
+                   )
+                 ) AS geom
+                 UNION
+                 SELECT ST_Translate(
+                   ST_GeomFromText(
+                     format('POLYGON((0 0, %s %s, %s %s, %s %s, %s %s, %s %s, 0 0))',
+                       qtrwidth, halfheight,
+                       qtrwidth * 3, halfheight,
+                       qtrwidth * 4, 0,
+                       qtrwidth * 3, halfheight * -1,
+                       qtrwidth, halfheight * -1
+                     )
+                   )
+                 , qtrwidth * 3, halfheight) as geom
+               ) AS two_hex);
+
+    END$BODY$
+      LANGUAGE plpgsql VOLATILE
+      COST 100;
+gen_hex_grid:
+  query:
+    DROP TABLE IF EXISTS hex_grid;
+    CREATE TABLE hex_grid (
+      gid SERIAL NOT NULL PRIMARY KEY,
+      geom GEOMETRY('POLYGON', 3348, 2) NOT NULL
+    )
+    WITH (OIDS=FALSE);
+
+    INSERT INTO hex_grid (geom)
+    SELECT hex_grid(5, {}, {}, {}, {}, 3348, 3005, 3348);
+
+    CREATE INDEX hex_grid_geom_idx ON hex_grid USING gist (geom);
+
+    CLUSTER hex_grid USING hex_grid_geom_idx;
+
+    SELECT * FROM hex_grid;
+aggregate:
+  query:
+    DROP TABLE IF EXISTS joined;
+    CREATE TABLE joined AS SELECT pts.*, grid.gid as gridid FROM reprept AS pts, hex_grid AS grid WHERE ST_Intersects( grid.geom, pts.geom);
+
+    DROP TABLE IF EXISTS aggregated;
+    SELECT gridid, ROUND(AVG("SINREV"), 2) AS year INTO aggregated FROM joined GROUP BY gridid ORDER BY year DESC;
+
+    DROP TABLE IF EXISTS agg_grid;
+    CREATE TABLE agg_grid AS SELECT
+       agg.year,
+       grid.gid,
+       grid.geom
+    FROM
+       hex_grid grid
+    INNER JOIN aggregated agg ON agg.gridid = grid.gid;
+
+    SELECT * FROM agg_grid;
+length:
+  query:
+    DROP TABLE IF EXISTS nrn_test;
+    CREATE TABLE nrn_test AS
+            SELECT a.gid,
+                    ST_Length(ST_Intersection(a.geom, b.geom)) AS nrn_len
+    FROM hex_grid a, nrn b
+    WHERE ST_Intersects(a.geom, b.geom);
+
+    DROP TABLE IF EXISTS nrn_sum;
+    CREATE TABLE nrn_sum AS
+            SELECT gid, SUM(nrn_len) FROM nrn_test GROUP BY gid;
+
+    DROP TABLE IF EXISTS osm_test;
+    CREATE TABLE osm_test AS
+            SELECT a.gid,
+                    ST_Length(ST_Intersection(a.geom, b.geom)) AS osm_len
+    FROM hex_grid a, osm b
+    WHERE ST_Intersects(a.geom, b.geom);
+
+    DROP TABLE IF EXISTS osm_sum;
+    CREATE TABLE osm_sum AS
+            SELECT  gid, SUM(osm_len) FROM osm_test GROUP BY gid;
+
+    DROP TABLE IF EXISTS nrn_osm_sum;
+    CREATE TABLE nrn_osm_sum AS
+            SELECT
+             a.gid,
+             a.sum as osm_sum,
+             b.sum as nrn_sum
+            FROM
+               osm_sum a
+    LEFT JOIN nrn_sum b ON a.gid = b.gid;
+
+    ALTER TABLE nrn_osm_sum ADD COLUMN diff BIGINT;
+
+    UPDATE nrn_osm_sum SET diff = nrn_sum - osm_sum;
+
+    DROP TABLE IF EXISTS agg_grid;
+    CREATE TABLE agg_grid AS SELECT
+       a.gid,
+       b.nrn_sum,
+       b.osm_sum,
+       b.diff,
+       a.geom
+    FROM
+       hex_grid a
+    INNER JOIN nrn_osm_sum b ON b.gid = a.gid;
+
+    SELECT * FROM agg_grid;
