@@ -21,14 +21,13 @@ logger.addHandler(handler)
 
 startTime = datetime.now()
 
-def main(osm_in, gpkg_in, layer_in, gpkg_out, layer_out):
+def main(osm_in, nrn_in, out, out_layer):
 
     # command line system arguments
     osm_in = (sys.argv[1])
-    gpkg_in = (sys.argv[2])
-    layer_in = (sys.argv[3])
-    gpkg_out = (sys.argv[4])
-    layer_out = (sys.argv[5])
+    nrn_in = (sys.argv[2])
+    out = (sys.argv[3])
+    out_layer = (sys.argv[4])
 
     # database name which will be used for stage 2
     nrn_db = "nrn"
@@ -114,18 +113,26 @@ def main(osm_in, gpkg_in, layer_in, gpkg_out, layer_out):
     osm = gpd.read_file(osm_in)
 
     logger.info("Transforming incoming OSM data.")
-    osm.crs = {'init': 'epsg:3348'}
-    minx, miny, maxx, maxy = osm.geometry.total_bounds
-    print(minx, miny, maxx, maxy)
+    # osm = osm.to_crs("epsg:3347")
 
     # Incoming NRN GPKG
     logger.info("Reading incoming GPKG.")
-    gdf = gpd.read_file(gpkg_in, layer=layer_in)
+    # gdf = gpd.read_file(gpkg_in, layer=layer_in)
+    gdf = gpd.read_file(nrn_in)
 
     logger.info("Transforming incoming GPKG.")
-    gdf.crs = {'init': 'epsg:3348'}
-    minx, miny, maxx, maxy = gdf.geometry.total_bounds
-    print(minx, miny, maxx, maxy)
+    # gdf = gdf.to_crs("epsg:3347")
+    # minx, miny, maxx, maxy = gdf.geometry.total_bounds
+    # print(minx, miny, maxx, maxy)
+
+    logger.info("Reading incoming grid.")
+    # gdf = gpd.read_file(gpkg_in, layer=layer_in)
+    grid = gpd.read_file("/home/kent/data/STC/lpr/grid.gpkg", driver="GPKG", layer="mb")
+
+    logger.info("Transforming incoming grid.")
+    # grid = grid.to_crs("epsg:3347")
+    # minx, miny, maxx, maxy = gdf.geometry.total_bounds
+    # print(minx, miny, maxx, maxy)
 
     logger.info("Importing GeoDataFrame into PostGIS.")
     gdf.postgis.to_postgis(con=engine, table_name="nrn", geometry='LineString', if_exists='replace')
@@ -133,19 +140,22 @@ def main(osm_in, gpkg_in, layer_in, gpkg_out, layer_out):
     logger.info("Importing OSM data into PostGIS.")
     osm.postgis.to_postgis(con=engine, table_name="osm", geometry='LineString', if_exists='replace')
 
-    logger.info("Extracting total bounds.")
-    minx, miny, maxx, maxy = gdf.geometry.total_bounds
-    minx = minx + (-1)
-    miny = miny - (-1)
-    maxx = maxx + 1
-    maxy = maxy - 1
-    print(minx, miny, maxx, maxy)
+    logger.info("Importing grid data into PostGIS.")
+    grid.postgis.to_postgis(con=engine, table_name="hex_grid", geometry='Polygon', if_exists='replace')
 
-    logger.info("Generating hex grid based on total bounds.")
-    hex_grid_query = sql_load["gen_hex_grid"]["query"].format(minx, miny, maxx, maxy)
+    # logger.info("Extracting total bounds.")
+    # minx, miny, maxx, maxy = gdf.geometry.total_bounds
+    # minx = minx + (-1)
+    # miny = miny - (-1)
+    # maxx = maxx + 1
+    # maxy = maxy - 1
+    # print(minx, miny, maxx, maxy)
 
-    logger.info("Generating hex grid.")
-    grid = gpd.GeoDataFrame.from_postgis(hex_grid_query, engine, geom_col="geom")
+    # logger.info("Generating hex grid based on total bounds.")
+    # hex_grid_query = sql_load["gen_hex_grid"]["query"].format(minx, miny, maxx, maxy)
+
+    # logger.info("Importing hex grid.")
+    # grid = gpd.GeoDataFrame.from_postgis(hex_grid_query, engine, geom_col="geom")
 
     logger.info("Comparing NRN and OSM road network length.")
     length = sql_load["length"]["query"]
@@ -155,17 +165,18 @@ def main(osm_in, gpkg_in, layer_in, gpkg_out, layer_out):
 
     # overwrite the incoming geopackage
     logger.info("Writing output GeoPackage.")
-    gdf.to_file(gpkg_out, layer=layer_out, driver='GPKG')
+    # gdf.to_file(gpkg_out, layer=layer_out, driver='GPKG')
+    gdf.to_file(out, layer=out_layer, driver="GPKG")
 
 
 if __name__ == "__main__":
 
-    if len(sys.argv) != 6:
-        print("ERROR: You must supply 4 arguments. "
-              "Example: python since_revision.py [/path/to/input/*.gpkg] [/path/to/output/*.gpkg] [layer in] [layer out]")
+    if len(sys.argv) != 5:
+        print("ERROR: You must supply 2 arguments. "
+              "Example: python compare_length_osm.py [/path/to/input_osm/] [/path/to/input_nrn/] [/path/to/output/]")
         sys.exit(1)
 
-    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
+    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
 
 # output execution time
 print("Total execution time: ", datetime.now() - startTime)

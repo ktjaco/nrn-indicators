@@ -101,51 +101,72 @@ aggregate:
     SELECT * FROM agg_grid;
 length:
   query:
+    ALTER TABLE nrn
+    ALTER COLUMN geom
+    TYPE Geometry(LineString, 3348)
+    USING ST_Transform(geom, 3348);
+
+    ALTER TABLE osm
+    ALTER COLUMN geom
+    TYPE Geometry(LineString, 3348)
+    USING ST_Transform(geom, 3348);
+
+    ALTER TABLE hex_grid
+    ALTER COLUMN geom
+    TYPE Geometry(Polygon, 3348)
+    USING ST_Transform(geom, 3348);
+
     DROP TABLE IF EXISTS nrn_test;
     CREATE TABLE nrn_test AS
-            SELECT a.gid,
+            SELECT a.id,
                     ST_Length(ST_Intersection(a.geom, b.geom)) AS nrn_len
     FROM hex_grid a, nrn b
     WHERE ST_Intersects(a.geom, b.geom);
 
     DROP TABLE IF EXISTS nrn_sum;
     CREATE TABLE nrn_sum AS
-            SELECT gid, SUM(nrn_len) FROM nrn_test GROUP BY gid;
+            SELECT id, SUM(nrn_len) FROM nrn_test GROUP BY id;
 
     DROP TABLE IF EXISTS osm_test;
     CREATE TABLE osm_test AS
-            SELECT a.gid,
+            SELECT a.id,
                     ST_Length(ST_Intersection(a.geom, b.geom)) AS osm_len
     FROM hex_grid a, osm b
     WHERE ST_Intersects(a.geom, b.geom);
 
     DROP TABLE IF EXISTS osm_sum;
     CREATE TABLE osm_sum AS
-            SELECT  gid, SUM(osm_len) FROM osm_test GROUP BY gid;
+            SELECT  id, SUM(osm_len) FROM osm_test GROUP BY id;
 
     DROP TABLE IF EXISTS nrn_osm_sum;
     CREATE TABLE nrn_osm_sum AS
             SELECT
-             a.gid,
+             a.id,
              a.sum as osm_sum,
              b.sum as nrn_sum
             FROM
                osm_sum a
-    LEFT JOIN nrn_sum b ON a.gid = b.gid;
+    LEFT JOIN nrn_sum b ON a.id = b.id;
 
     ALTER TABLE nrn_osm_sum ADD COLUMN diff BIGINT;
+
+    UPDATE nrn_osm_sum SET nrn_sum = 0 WHERE nrn_sum IS NULL;
+
+    UPDATE nrn_osm_sum SET osm_sum = 0 WHERE osm_sum IS NULL;
 
     UPDATE nrn_osm_sum SET diff = nrn_sum - osm_sum;
 
     DROP TABLE IF EXISTS agg_grid;
     CREATE TABLE agg_grid AS SELECT
-       a.gid,
+       a.id,
        b.nrn_sum,
        b.osm_sum,
        b.diff,
        a.geom
     FROM
        hex_grid a
-    INNER JOIN nrn_osm_sum b ON b.gid = a.gid;
+    INNER JOIN nrn_osm_sum b ON b.id = a.id;
+
+    UPDATE agg_grid SET diff = 0 WHERE diff IS NULL;
 
     SELECT * FROM agg_grid;
