@@ -127,7 +127,7 @@ def main(osm_in, nrn_in, out, out_layer):
 
     logger.info("Reading incoming grid.")
     # gdf = gpd.read_file(gpkg_in, layer=layer_in)
-    grid = gpd.read_file("/home/kent/data/STC/lpr/grid.gpkg", driver="GPKG", layer="mb")
+    grid = gpd.read_file("/home/kent/data/STC/lpr/grid.gpkg", driver="GPKG", layer="ab")
 
     logger.info("Transforming incoming grid.")
     # grid = grid.to_crs("epsg:3347")
@@ -162,6 +162,7 @@ def main(osm_in, nrn_in, out, out_layer):
 
     logger.info("Extracting final from PostGIS.")
     gdf = gpd.GeoDataFrame.from_postgis(length, engine, geom_col="geom")
+    gdf.crs = {"init": "epsg:3348"}
 
     # overwrite the incoming geopackage
     logger.info("Writing output GeoPackage.")
