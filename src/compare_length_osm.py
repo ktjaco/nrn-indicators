@@ -110,17 +110,30 @@ def main(osm_in, nrn_in, out, out_layer):
     nrn_cursor.close()
     nrn_conn.close()
 
-    logger.info("Reading incoming test data.")
-    test = gpd.read_file("/home/kent/PycharmProjects/nrn-indicators/data/interim/pei.gpkg", driver="GPKG")
-    minx, miny, maxx, maxy = test.geometry.total_bounds
+    # Download provincial boundaries from STC website.
+    logger.info("Downloading provincial boundaries.")
+    pr_url = "http://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/2016/lpr_000b16a_e.zip"
+    urllib.request.urlretrieve(pr_url, '../data/interim/pr.zip')
+    with zipfile.ZipFile("../data/interim/pr.zip", "r") as zip_ref:
+        zip_ref.extractall("../data/interim/pr")
 
+    logger.info("Reading incoming provincial boundaries.")
+    pr = gpd.read_file("../data/interim/pr/lpr_000b16a_e.shp")
+
+    # Assign geodataframe total bounds to min and max XY.
+    minx, miny, maxx, maxy = pr.geometry.total_bounds
+
+    # Assign list to variable extent.
     extent = [minx, maxx, miny, maxy]
+
+    # Convert extent to string and separate by comma.
     extent = ','.join(map(str, extent))
 
-    logger.info("Creating grid extent.")
-    qgis_processing.grid(extent)
+    # Creates a hexagon grid using the provincial boundary extent and QGIS Processing.
+    logger.info("Generating grid.")
+    qgis_processing.gen_grid(extent)
 
-    # Icoming OSM data
+    # Incoming OSM data
     logger.info("Reading incoming OSM data.")
     osm = gpd.read_file(osm_in)
 
@@ -129,9 +142,8 @@ def main(osm_in, nrn_in, out, out_layer):
     gdf = gpd.read_file(nrn_in)
 
     logger.info("Reading incoming grid.")
-    grid = gpd.read_file("/home/kent/data/STC/lpr/grid.gpkg", driver="GPKG", layer="ab")
-
-    
+    grid = gpd.read_file("../data/interim/output.gpkg", driver="GPKG")
+    grid.crs = {"init": "epsg:3348"}
 
     logger.info("Importing GeoDataFrame into PostGIS.")
     gdf.postgis.to_postgis(con=engine, table_name="nrn", geometry='LineString', if_exists='replace')
@@ -149,7 +161,6 @@ def main(osm_in, nrn_in, out, out_layer):
     gdf = gpd.GeoDataFrame.from_postgis(length, engine, geom_col="geom")
     gdf.crs = {"init": "epsg:3348"}
 
-    # overwrite the incoming geopackage
     logger.info("Writing output GeoPackage.")
     gdf.to_file(out, layer=out_layer, driver="GPKG")
 
@@ -157,7 +168,7 @@ def main(osm_in, nrn_in, out, out_layer):
 if __name__ == "__main__":
 
     if len(sys.argv) != 5:
-        print("ERROR: You must supply 2 arguments. "
+        print("ERROR: You must supply 4 arguments. "
               "Example: python compare_length_osm.py [/path/to/input_osm/] [/path/to/input_nrn/] [/path/to/output/]")
         sys.exit(1)
 

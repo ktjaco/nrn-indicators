@@ -32,7 +32,7 @@ def initialise_processing(app):
     return (app, processing,)
 
 
-def create_grid(extent):
+def gen_grid(extent):
     params = {
         'CRS': 'QgsCoordinateReferenceSystem(\'EPSG:3348\')',
         # 'EXTENT': '8254281.025715,8436867.64,1598617.582855,1680393.742855',
@@ -42,8 +42,7 @@ def create_grid(extent):
         'TYPE': 4,
         'VOVERLAY': 0,
         'VSPACING': 10000,
-        'OUTPUT': 'ogr:dbname=\'/home/kent/PycharmProjects/nrn-indicators/data/interim/pei.gpkg\' '
-                  'table=\"grid\" (geom)'
+        'OUTPUT': 'ogr:dbname=\'/home/kent/PycharmProjects/nrn-indicators/data/interim/output.gpkg'
     }
     return processing.run("native:creategrid", params)
 
