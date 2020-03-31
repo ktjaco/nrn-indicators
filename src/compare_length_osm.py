@@ -9,7 +9,9 @@ from psycopg2 import connect, extensions, sql
 from sqlalchemy import *
 from sqlalchemy.engine.url import URL
 
+sys.path.insert(1, os.path.join(sys.path[0], ".."))
 import helpers
+import qgis_processing
 
 # Set logger.
 logger = logging.getLogger()
@@ -108,31 +110,28 @@ def main(osm_in, nrn_in, out, out_layer):
     nrn_cursor.close()
     nrn_conn.close()
 
+    logger.info("Reading incoming test data.")
+    test = gpd.read_file("/home/kent/PycharmProjects/nrn-indicators/data/interim/pei.gpkg", driver="GPKG")
+    minx, miny, maxx, maxy = test.geometry.total_bounds
+
+    extent = [minx, maxx, miny, maxy]
+    extent = ','.join(map(str, extent))
+
+    logger.info("Creating grid extent.")
+    qgis_processing.grid(extent)
+
     # Icoming OSM data
     logger.info("Reading incoming OSM data.")
     osm = gpd.read_file(osm_in)
 
-    logger.info("Transforming incoming OSM data.")
-    # osm = osm.to_crs("epsg:3347")
-
     # Incoming NRN GPKG
     logger.info("Reading incoming GPKG.")
-    # gdf = gpd.read_file(gpkg_in, layer=layer_in)
     gdf = gpd.read_file(nrn_in)
 
-    logger.info("Transforming incoming GPKG.")
-    # gdf = gdf.to_crs("epsg:3347")
-    # minx, miny, maxx, maxy = gdf.geometry.total_bounds
-    # print(minx, miny, maxx, maxy)
-
     logger.info("Reading incoming grid.")
-    # gdf = gpd.read_file(gpkg_in, layer=layer_in)
     grid = gpd.read_file("/home/kent/data/STC/lpr/grid.gpkg", driver="GPKG", layer="ab")
 
-    logger.info("Transforming incoming grid.")
-    # grid = grid.to_crs("epsg:3347")
-    # minx, miny, maxx, maxy = gdf.geometry.total_bounds
-    # print(minx, miny, maxx, maxy)
+    
 
     logger.info("Importing GeoDataFrame into PostGIS.")
     gdf.postgis.to_postgis(con=engine, table_name="nrn", geometry='LineString', if_exists='replace')
@@ -143,20 +142,6 @@ def main(osm_in, nrn_in, out, out_layer):
     logger.info("Importing grid data into PostGIS.")
     grid.postgis.to_postgis(con=engine, table_name="hex_grid", geometry='Polygon', if_exists='replace')
 
-    # logger.info("Extracting total bounds.")
-    # minx, miny, maxx, maxy = gdf.geometry.total_bounds
-    # minx = minx + (-1)
-    # miny = miny - (-1)
-    # maxx = maxx + 1
-    # maxy = maxy - 1
-    # print(minx, miny, maxx, maxy)
-
-    # logger.info("Generating hex grid based on total bounds.")
-    # hex_grid_query = sql_load["gen_hex_grid"]["query"].format(minx, miny, maxx, maxy)
-
-    # logger.info("Importing hex grid.")
-    # grid = gpd.GeoDataFrame.from_postgis(hex_grid_query, engine, geom_col="geom")
-
     logger.info("Comparing NRN and OSM road network length.")
     length = sql_load["length"]["query"]
 
@@ -166,7 +151,6 @@ def main(osm_in, nrn_in, out, out_layer):
 
     # overwrite the incoming geopackage
     logger.info("Writing output GeoPackage.")
-    # gdf.to_file(gpkg_out, layer=layer_out, driver='GPKG')
     gdf.to_file(out, layer=out_layer, driver="GPKG")
 
 
