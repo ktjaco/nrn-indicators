@@ -1,11 +1,12 @@
+import fiona
 import geopandas as gpd
 import os, sys
 import logging
 from datetime import datetime
 
 sys.path.insert(1, os.path.join(sys.path[0], ".."))
-import helpers
-import qgis_processing
+# import helpers
+# import qgis_processing
 
 # Set logger.
 logger = logging.getLogger()
@@ -17,31 +18,51 @@ logger.addHandler(handler)
 
 startTime = datetime.now()
 
-def main(network, nrn, output, output_layer):
+def main(network, nrn, nrn_layer):
 
     # command line system arguments
     network = (sys.argv[1])
     nrn = (sys.argv[2])
-    output = (sys.argv[3])
-    output_layer = (sys.argv[4])
+    nrn_layer = (sys.argv[3])
+    # output = (sys.argv[4])
 
     # load the two datasets that will be compared
     net_gdf = gpd.read_file(network)
-    nrn = gpd.read_file(nrn)
+    nrn = gpd.read_file(nrn, layer=nrn_layer)
+
+    # convert to projects CRS
+    nrn = nrn.to_crs("EPSG:3348")
+    net_gdf = net_gdf.to_crs("EPSG:3348")
+
+    # buffer "true" road network
+    nrn_buffer = nrn.buffer(10)
+
+    logger.info("Creating buffer gdf.")
+    nrn_buffer_gdf = gpd.GeoDataFrame(geometry=gpd.GeoSeries(nrn_buffer))
+    # nrn_buffer_gdf = nrn_buffer_gdf.to_crs("EPSG:3348")
+
+    # clip tested road network
+    logger.info("Simplify buffer.")
+    nrn_buffer_gdf_sim = nrn_buffer_gdf.simplify(0.2, preserve_topology=True)
+    logger.info("Clipping...")
+    nrn_clip = gpd.clip(net_gdf, nrn_buffer_gdf_sim)
 
 
+    print(nrn_clip)
+
+    sys.exit(1)
 
 
 
 
 if __name__ == "__main__":
 
-    if len(sys.argv) != 5:
+    if len(sys.argv) != 4:
         print("ERROR: You must supply 4 arguments. "
               "Example: python compare_length_osm.py [/path/to/input_osm/] [/path/to/input_nrn/] [/path/to/output/]")
         sys.exit(1)
 
-    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    main(sys.argv[1], sys.argv[2], sys.argv[3])
 
 # output execution time
 print("Total execution time: ", datetime.now() - startTime)
