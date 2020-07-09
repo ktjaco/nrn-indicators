@@ -1,5 +1,5 @@
 # Data files
-#/data/*
+/data/*
 !/data/interim/.gitkeep
 !/data/processed/.gitkeep
 !/data/raw/.gitkeep
