@@ -42,13 +42,20 @@ def main(network, nrn, nrn_layer):
     # nrn_buffer_gdf = nrn_buffer_gdf.to_crs("EPSG:3348")
 
     # clip tested road network
-    logger.info("Simplify buffer.")
-    nrn_buffer_gdf_sim = nrn_buffer_gdf.simplify(0.2, preserve_topology=True)
+    # logger.info("Simplify buffer.")
+    # nrn_buffer_gdf_sim = nrn_buffer_gdf.simplify(0.2, preserve_topology=True)
+
+    # net_gdf_sindex = net_gdf.sindex
+    # nrn_buffer_gdf_sim_sindex = nrn_buffer_gdf_sim.sindex
+
     logger.info("Clipping...")
-    nrn_clip = gpd.clip(net_gdf, nrn_buffer_gdf_sim)
+    nrn_clip = gpd.overlay(net_gdf, nrn_buffer_gdf, how="intersection")
 
 
-    print(nrn_clip)
+    logger.info("Printing...")
+    nrn_clip.to_file("../data/interim/output.gpkg", layer="nrn_clip", driver="GPKG")
+    net_gdf.to_file("../data/interim/output.gpkg", layer="network", driver="GPKG")
+    nrn_buffer_gdf.to_file("../data/interim/output.gpkg", layer="nrn_buffer", driver="GPKG")
 
     sys.exit(1)
 
@@ -59,7 +66,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) != 4:
         print("ERROR: You must supply 4 arguments. "
-              "Example: python compare_length_osm.py [/path/to/input_osm/] [/path/to/input_nrn/] [/path/to/output/]")
+              "Example: python..")
         sys.exit(1)
 
     main(sys.argv[1], sys.argv[2], sys.argv[3])
