@@ -54,12 +54,12 @@ def main(network, net_layer, nrn, nrn_layer):
 
 if __name__ == "__main__":
 
-    if len(sys.argv) != 5:
+    if len(sys.argv) != 6:
         print("ERROR: You must supply 4 arguments. "
-              "Example: python3 [GPKG path] [GPKG layer] [NRN path] [NRN layer]")
+              "Example: python3 [GPKG path] [GPKG layer] [NRN path] [NRN layer] [Buffer width]")
         sys.exit(1)
 
-    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
 
 # output execution time
 print("Total execution time: ", datetime.now() - startTime)
